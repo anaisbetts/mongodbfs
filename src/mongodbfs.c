@@ -1,7 +1,7 @@
 /*
- * vcachefs.c - Userspace video caching filesystem 
+ * mongodbfs.c - Userspace filesystem for MongoDB's GridFS
  *
- * Copyright 2008 Paul Betts <paul.betts@gmail.com>
+ * Copyright 2010 Paul Betts <paul.betts@gmail.com>
  *
  *
  * License:
@@ -39,7 +39,7 @@
 #include <glib.h>
 
 #include "stdafx.h"
-#include "vcachefs.h"
+#include "mongodbfs.h"
 #include "stats.h"
 #include "queue.h"
 #include "cachemgr.h"
@@ -52,27 +52,27 @@ GIOChannel* stats_file = NULL;
  * Utility Routines 
  */
 
-static struct vcachefs_mount* get_current_mountinfo(void)
+static struct mongodbfs_mount* get_current_mountinfo(void)
 {
 	/* NOTE: This function *only* works inside a FUSE callout */
 	struct fuse_context* ctx = fuse_get_context();
 	return (ctx ? ctx->private_data : NULL);
 }
 
-static struct vcachefs_fdentry* fdentry_new(void)
+static struct mongodbfs_fdentry* fdentry_new(void)
 {
-	struct vcachefs_fdentry* ret = g_new0(struct vcachefs_fdentry, 1);
+	struct mongodbfs_fdentry* ret = g_new0(struct mongodbfs_fdentry, 1);
 	ret->refcnt = 1;
 	return ret;
 }
 
-static struct vcachefs_fdentry* fdentry_ref(struct vcachefs_fdentry* obj)
+static struct mongodbfs_fdentry* fdentry_ref(struct mongodbfs_fdentry* obj)
 {
 	g_atomic_int_inc(&obj->refcnt);
 	return obj;
 }
 
-static void fdentry_unref(struct vcachefs_fdentry* obj)
+static void fdentry_unref(struct mongodbfs_fdentry* obj)
 {
 	if(g_atomic_int_dec_and_test(&obj->refcnt)) {
 		if(obj->source_fd > 0)
@@ -84,10 +84,10 @@ static void fdentry_unref(struct vcachefs_fdentry* obj)
 	}
 }
 
-static struct vcachefs_fdentry* fdentry_from_fd(uint fd)
+static struct mongodbfs_fdentry* fdentry_from_fd(uint fd)
 {
-	struct vcachefs_fdentry* ret = NULL;
-	struct vcachefs_mount* mount_obj = get_current_mountinfo();
+	struct mongodbfs_fdentry* ret = NULL;
+	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 
 	g_static_rw_lock_reader_lock(&mount_obj->fd_table_rwlock);
 	ret = g_hash_table_lookup(mount_obj->fd_table, &fd);
@@ -98,12 +98,12 @@ static struct vcachefs_fdentry* fdentry_from_fd(uint fd)
 
 static char* build_cache_path(const char* source_path)
 {
-	const char* env = getenv("VCACHEFS_CACHEPATH");
+	const char* env = getenv("MONGODBFS_CACHEPATH");
 	char* cache_root;
 	if (env) {
 		cache_root = g_strdup(env);
 	} else {
-		cache_root = g_build_filename(getenv("HOME"), ".vcachefs", NULL);
+		cache_root = g_build_filename(getenv("HOME"), ".mongodbfs", NULL);
 	}
 
 	// Calculate the MD5 of the source path
@@ -193,7 +193,7 @@ static void add_cache_fd_to_item(gpointer key, gpointer value, gpointer cache_en
 {
 	/* NOTE: Since we've grabbed the fd table lock before this function, we don't need
 	 * to grab a reference to the fd entry */
-	struct vcachefs_fdentry* fde = value;
+	struct mongodbfs_fdentry* fde = value;
 	struct cache_entry* ce = cache_entry;
 	if (strcmp(fde->relative_path, ce->relative_path))
 		return;
@@ -214,7 +214,7 @@ static void add_cache_fd_to_item(gpointer key, gpointer value, gpointer cache_en
 
 static gpointer file_cache_copy_thread(gpointer data)
 {
-	struct vcachefs_mount* mount_obj = data;
+	struct mongodbfs_mount* mount_obj = data;
 
 	g_debug("Starting cache copy thread...");
 	while(g_atomic_int_get(&mount_obj->quitflag_atomic) == 0) {
@@ -281,7 +281,7 @@ done:
 gboolean can_delete_cached_file(const char* path, gpointer context)
 {
 	/* Blowing away files who we have an open handle to is probably bad */
-	struct vcachefs_mount* mount_obj = context;
+	struct mongodbfs_mount* mount_obj = context;
 	gboolean ret;
 
 	g_static_rw_lock_reader_lock(&mount_obj->fd_table_rwlock);
@@ -292,7 +292,7 @@ gboolean can_delete_cached_file(const char* path, gpointer context)
 	return ret;
 }
 
-static void insert_fdtable_entry(struct vcachefs_mount* mount_obj, struct vcachefs_fdentry* fde)
+static void insert_fdtable_entry(struct mongodbfs_mount* mount_obj, struct mongodbfs_fdentry* fde)
 {
 	g_hash_table_insert(mount_obj->fd_table, &fde->fd, fde);
 
@@ -322,7 +322,7 @@ static void trash_fdtable_byname_item(gpointer key, gpointer val, gpointer dontc
 
 static void trash_fdtable_item(gpointer key, gpointer val, gpointer dontcare) 
 { 
-	fdentry_unref((struct vcachefs_fdentry*)val);
+	fdentry_unref((struct mongodbfs_fdentry*)val);
 }
 
 
@@ -331,16 +331,16 @@ static void trash_fdtable_item(gpointer key, gpointer val, gpointer dontcare)
  * FUSE callouts
  */
 
-static void* vcachefs_init(struct fuse_conn_info *conn)
+static void* mongodbfs_init(struct fuse_conn_info *conn)
 {
-	struct vcachefs_mount* mount_object = g_new0(struct vcachefs_mount, 1);
-	mount_object->source_path = g_strdup(getenv("VCACHEFS_TARGET"));
+	struct mongodbfs_mount* mount_object = g_new0(struct mongodbfs_mount, 1);
+	mount_object->source_path = g_strdup(getenv("MONGODBFS_TARGET"));
 	mount_object->cache_path = build_cache_path(mount_object->source_path);
 
 	/* TODO: This is actually a config param */
 	mount_object->max_cache_size = 20 * 1024 * 1024;
 
-	if (getenv("VCACHEFS_PASSTHROUGH"))
+	if (getenv("MONGODBFS_PASSTHROUGH"))
 		mount_object->pass_through = 1;
 
 	g_thread_init(NULL);
@@ -365,9 +365,9 @@ static void* vcachefs_init(struct fuse_conn_info *conn)
 	return mount_object;
 }
 
-static void vcachefs_destroy(void *mount_object_ptr)
+static void mongodbfs_destroy(void *mount_object_ptr)
 {
-	struct vcachefs_mount* mount_object = mount_object_ptr;
+	struct mongodbfs_mount* mount_object = mount_object_ptr;
 
 	/* Kick off a watchdog thread; this is our last chance to bail; while
 	 * Mac and Linux both support async IO for reads/writes, if a remote FS
@@ -409,17 +409,17 @@ static void vcachefs_destroy(void *mount_object_ptr)
 	g_debug("Finished cleanup");
 }
 
-static int is_quitting(struct vcachefs_mount* mount_obj)
+static int is_quitting(struct mongodbfs_mount* mount_obj)
 {
 	return (g_atomic_int_get(&mount_obj->quitflag_atomic) != 0);
 }
 
 /* File ops callouts */
 
-static int vcachefs_getattr(const char *path, struct stat *stbuf)
+static int mongodbfs_getattr(const char *path, struct stat *stbuf)
 {
 	int ret = 0; 
-	struct vcachefs_mount* mount_obj = get_current_mountinfo();
+	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 
 	if(path == NULL || strlen(path) == 0) {
 		return -ENOENT;
@@ -441,10 +441,10 @@ static int vcachefs_getattr(const char *path, struct stat *stbuf)
 	return (ret ? -errno : 0);
 }
 
-static int vcachefs_open(const char *path, struct fuse_file_info *fi)
+static int mongodbfs_open(const char *path, struct fuse_file_info *fi)
 {
-	struct vcachefs_mount* mount_obj = get_current_mountinfo();
-	struct vcachefs_fdentry* fde = NULL;
+	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
+	struct mongodbfs_fdentry* fde = NULL;
 
 	if(path == NULL || strlen(path) == 0) {
 		return -ENOENT;
@@ -513,12 +513,12 @@ out:
 	return ret;
 }
 
-static int vcachefs_read(const char *path, char *buf, size_t size, off_t offset,
+static int mongodbfs_read(const char *path, char *buf, size_t size, off_t offset,
 		struct fuse_file_info *fi)
 {
 	int ret = 0;
-	struct vcachefs_mount* mount_obj = get_current_mountinfo();
-	struct vcachefs_fdentry* fde = fdentry_from_fd(fi->fh);
+	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
+	struct mongodbfs_fdentry* fde = fdentry_from_fd(fi->fh);
 	if(!fde)
 		return -ENOENT;
 
@@ -541,9 +541,9 @@ out:
 	return (ret < 0 ? -errno : ret);
 }
 
-static int vcachefs_statfs(const char *path, struct statvfs *stat)
+static int mongodbfs_statfs(const char *path, struct statvfs *stat)
 {
-	struct vcachefs_mount* mount_obj = get_current_mountinfo();
+	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 
 	/* On shutdown, fail new requests */
 	if(is_quitting(mount_obj))
@@ -552,10 +552,10 @@ static int vcachefs_statfs(const char *path, struct statvfs *stat)
 	return statvfs(mount_obj->source_path, stat);
 }
 
-static int vcachefs_release(const char *path, struct fuse_file_info *info)
+static int mongodbfs_release(const char *path, struct fuse_file_info *info)
 {
-	struct vcachefs_mount* mount_obj = get_current_mountinfo();
-	struct vcachefs_fdentry* fde = NULL;
+	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
+	struct mongodbfs_fdentry* fde = NULL;
 
 	/* On shutdown, fail new requests */
 	if(is_quitting(mount_obj))
@@ -591,10 +591,10 @@ static int vcachefs_release(const char *path, struct fuse_file_info *info)
 	return 0;
 }
 
-static int vcachefs_access(const char *path, int amode)
+static int mongodbfs_access(const char *path, int amode)
 {
 	int ret = 0; 
-	struct vcachefs_mount* mount_obj = get_current_mountinfo();
+	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 
 	if(path == NULL || strlen(path) == 0)
 		return -ENOENT;
@@ -617,13 +617,13 @@ static int vcachefs_access(const char *path, int amode)
 
 }
 
-static int vcachefs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+static int mongodbfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		off_t offset, struct fuse_file_info *fi)
 {
 	int ret;
 	gchar* full_path = NULL;
  	const gchar* next_path_try;
-	struct vcachefs_mount* mount_obj = get_current_mountinfo();
+	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 	DIR* dir = NULL;
 	struct dirent* dentry;
 	char path_buf[512];
@@ -691,33 +691,33 @@ out:
  * Main
  */
 
-static struct fuse_operations vcachefs_oper = {
-	.getattr	= vcachefs_getattr,
-	/*.readlink 	= vcachefs_readlink, */
-	.open 		= vcachefs_open,
-	.read		= vcachefs_read,
-	.statfs 	= vcachefs_statfs,
+static struct fuse_operations mongodbfs_oper = {
+	.getattr	= mongodbfs_getattr,
+	/*.readlink 	= mongodbfs_readlink, */
+	.open 		= mongodbfs_open,
+	.read		= mongodbfs_read,
+	.statfs 	= mongodbfs_statfs,
 	/* TODO: do we need flush? */
-	.release 	= vcachefs_release,
-	.init 		= vcachefs_init,
-	.destroy 	= vcachefs_destroy,
-	.access 	= vcachefs_access,
+	.release 	= mongodbfs_release,
+	.init 		= mongodbfs_init,
+	.destroy 	= mongodbfs_destroy,
+	.access 	= mongodbfs_access,
 
 	/* TODO: implement these later
-	.getxattr 	= vcachefs_getxattr,
-	.listxattr 	= vcachefs_listxattr,
-	.opendir 	= vcachefs_opendir, */
-	.readdir	= vcachefs_readdir,
-	/*.releasedir 	= vcachefs_releasedir,
-	.fsyncdir 	= vcachefs_fsyncdir, */
+	.getxattr 	= mongodbfs_getxattr,
+	.listxattr 	= mongodbfs_listxattr,
+	.opendir 	= mongodbfs_opendir, */
+	.readdir	= mongodbfs_readdir,
+	/*.releasedir 	= mongodbfs_releasedir,
+	.fsyncdir 	= mongodbfs_fsyncdir, */
 };
 
 int main(int argc, char *argv[])
 {
 	/* Check for our environment variables 
 	 * FIXME: There's got to be a less dumb way to do this */
-	if (!getenv("VCACHEFS_TARGET")) {
-		printf(" *** Please set the VCACHEFS_TARGET environment variable to the path that "
+	if (!getenv("MONGODBFS_TARGET")) {
+		printf(" *** Please set the MONGODBFS_TARGET environment variable to the path that "
 		       "should be mirrored! ***\n");
 		return -1;
 	}
@@ -725,5 +725,5 @@ int main(int argc, char *argv[])
 	/* Initialize libevent */
 	//ev_base = event_init();
 	
-	return fuse_main(argc, argv, &vcachefs_oper, NULL);
+	return fuse_main(argc, argv, &mongodbfs_oper, NULL);
 }

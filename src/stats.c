@@ -41,7 +41,7 @@
 
 GIOChannel* stats_open_logging(void)
 {
-	char* path = getenv("VCACHEFS_STATS_FILE");
+	char* path = getenv("MONGODBFS_STATS_FILE");
 	if (!path)
 		return NULL;
 

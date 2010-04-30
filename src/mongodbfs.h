@@ -1,7 +1,7 @@
 /*
- * vcachefs.h - Userspace video caching filesystem 
+ * mongodbfs.h - Userspace filesystem for MongoDB's GridFS
  *
- * Copyright 2008 Paul Betts <paul.betts@gmail.com>
+ * Copyright 2010 Paul Betts <paul.betts@gmail.com>
  *
  *
  * License:
@@ -21,8 +21,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#ifndef _VCACHEFS_H
-#define _VCACHEFS_H
+#ifndef _MONGODBFS_H
+#define _MONGODBFS_H
 
 #include <glib.h>
 
@@ -32,7 +32,7 @@
 
 /* This object is the per-mount data we carry around with us throughout the 
  * life of the app until we release it */
-struct vcachefs_mount {
+struct mongodbfs_mount {
 
 	/* Configuration */
 	char* 	source_path;
@@ -55,7 +55,7 @@ struct vcachefs_mount {
 	struct WorkitemQueue* work_queue;
 };
 
-struct vcachefs_fdentry {
+struct mongodbfs_fdentry {
 	gint 		refcnt; 
 
 	char* 		relative_path;

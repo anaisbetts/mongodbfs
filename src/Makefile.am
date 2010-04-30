@@ -3,18 +3,18 @@
 INCLUDES = \
 	-DFUSE_USE_VERSION=27 \
 	-I. -Wall -Werror \
-	$(VCACHEFS_CFLAGS)			
+	$(MONGODBFS_CFLAGS)			
 
-bin_PROGRAMS = vcachefs
+bin_PROGRAMS = mongodbfs
 
 AM_CFLAGS = -std=c99 -g -O0
 
 ## HACK HACK HACK: We're adding libevent here, without ever actually checking for it!
-vcachefs_LDADD = $(VCACHEFS_LIBS) -lgthread-2.0 -lpthread \
+mongodbfs_LDADD = $(MONGODBFS_LIBS) -lgthread-2.0 -lpthread \
 		 #-levent
 
-vcachefs_SOURCES = \
-	vcachefs.c \
+mongodbfs_SOURCES = \
+	mongodbfs.c \
 	stats.c \
 	queue.c \
 	cachemgr.c

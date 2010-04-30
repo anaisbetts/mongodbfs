@@ -1,5 +1,5 @@
 /*
- * stats.h - Userspace video caching filesystem 
+ * stats.h - I/O statistics
  *
  * Copyright 2008 Paul Betts <paul.betts@gmail.com>
  *

@@ -1,5 +1,5 @@
 /*
- * queue.h - Userspace video caching filesystem 
+ * queue.h - Queued workitem system
  *
  * Copyright 2008 Paul Betts <paul.betts@gmail.com>
  *
