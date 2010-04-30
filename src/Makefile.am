@@ -16,5 +16,4 @@ mongodbfs_LDADD = $(MONGODBFS_LIBS) -lgthread-2.0 -lpthread \
 mongodbfs_SOURCES = \
 	mongodbfs.c \
 	stats.c \
-	queue.c \
-	cachemgr.c
+	queue.c

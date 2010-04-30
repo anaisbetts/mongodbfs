@@ -33,23 +33,12 @@
 /* This object is the per-mount data we carry around with us throughout the 
  * life of the app until we release it */
 struct mongodbfs_mount {
-
-	/* Configuration */
-	char* 	source_path;
-	char* 	cache_path;
-	gulong 	max_cache_size;
-	int 	pass_through;
 	
 	/* File descriptor table */
 	GHashTable* 	fd_table;
 	GHashTable* 	fd_table_byname;
 	uint 		next_fd;
 	GStaticRWLock 	fd_table_rwlock;
-
-	/* File-based caching */
-	GAsyncQueue* 		file_copy_queue;
-	GThread* 		file_copy_thread;
-	struct CacheManager* 	cache_manager;
 
 	gint quitflag_atomic;
 	struct WorkitemQueue* work_queue;
@@ -60,12 +49,6 @@ struct mongodbfs_fdentry {
 
 	char* 		relative_path;
 	uint 	 	fd;
-
-	uint64_t 	source_fd;
-	off_t 		source_offset;
-
-	uint64_t 	filecache_fd;
-	off_t 		filecache_offset;
 };
 
 #endif 
