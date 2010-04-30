@@ -73,7 +73,7 @@ static struct mongodbfs_fdentry* fdentry_ref(struct mongodbfs_fdentry* obj)
 
 static void fdentry_unref(struct mongodbfs_fdentry* obj)
 {
-	if(g_atomic_int_dec_and_test(&obj->refcnt)) {
+	if (g_atomic_int_dec_and_test(&obj->refcnt)) {
 		g_free(obj->relative_path);
 		g_free(obj);
 	}
@@ -142,7 +142,7 @@ void* mongodbfs_init(struct fuse_conn_info *conn)
 	mount_object->fd_table = g_hash_table_new(g_int_hash, g_int_equal);
 	mount_object->fd_table_byname = g_hash_table_new(g_str_hash, g_str_equal);
 	g_static_rw_lock_init(&mount_object->fd_table_rwlock);
-	mount_object->next_fd = 4;
+	mount_object->next_fd_atomic = 4;
 
 	mount_object->work_queue = workitem_queue_new();
 
@@ -193,21 +193,21 @@ int mongodbfs_open(const char *path, struct fuse_file_info *fi)
 	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 	struct mongodbfs_fdentry* fde = NULL;
 
-	if(path == NULL || strlen(path) == 0) {
+	if (path == NULL || strlen(path) == 0) {
 		return -ENOENT;
 	}
 
 	/* On shutdown, fail new requests */
-	if(is_quitting(mount_obj))
+	if (is_quitting(mount_obj))
 		return -EIO;
+
 
 	/* Open succeeded - time to create a fdentry */
 	fde = fdentry_new();
 	fde->relative_path = g_strdup(path);
 
 	g_static_rw_lock_writer_lock(&mount_obj->fd_table_rwlock);
-	fi->fh = fde->fd = mount_obj->next_fd;
-	mount_obj->next_fd++; 				// XXX: Atomic, you dumb fuck!
+	fi->fh = fde->fd = g_atomic_int_exchange_and_add(&mount_obj->next_fd_atomic, 1);
 	insert_fdtable_entry(mount_obj, fde);
 	g_static_rw_lock_writer_unlock(&mount_obj->fd_table_rwlock);
 
@@ -216,44 +216,23 @@ int mongodbfs_open(const char *path, struct fuse_file_info *fi)
 	return 0;
 }
 
-#if 0
-static int read_from_fd(int fd, off_t* cur_offset, char* buf, size_t size, off_t offset)
-{
-	int ret = 0;
-
-	if(*cur_offset != offset) {
-		int tmp = lseek(fd, offset, SEEK_SET);
-		if (tmp < 0) {
-			ret = tmp;
-			goto out;
-		}
-	}
-
-	ret = read(fd, buf, size);
-	if (ret >= 0)
-		*cur_offset = offset + ret;
-out:
-	return ret;
-}
-#endif
-
 int mongodbfs_read(const char *path, char *buf, size_t size, off_t offset,
 		struct fuse_file_info *fi)
 {
 	int ret = 0;
 	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 	struct mongodbfs_fdentry* fde = fdentry_from_fd(fi->fh);
-	if(!fde)
+	if (!fde)
 		return -ENOENT;
 
 	/* On shutdown, fail new requests */
-	if(is_quitting(mount_obj))
+	if (is_quitting(mount_obj))
 		return -EIO;
 
 	// XXX: Implement Me!
 	return -EIO;
 
-	fdentry_unref(fde); 	// XXX: Is this right?
+	fdentry_unref(fde);
 	return (ret < 0 ? -errno : ret);
 }
 
@@ -262,7 +241,7 @@ int mongodbfs_statfs(const char *path, struct statvfs *stat)
 	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 
 	/* On shutdown, fail new requests */
-	if(is_quitting(mount_obj))
+	if (is_quitting(mount_obj))
 		return -EIO;
 
 	// XXX: Implement me!
@@ -275,7 +254,7 @@ int mongodbfs_release(const char *path, struct fuse_file_info *info)
 	struct mongodbfs_fdentry* fde = NULL;
 
 	/* On shutdown, fail new requests */
-	if(is_quitting(mount_obj))
+	if (is_quitting(mount_obj))
 		return -EIO;
 
 	/* Remove the entry from the fd table */
@@ -300,7 +279,7 @@ int mongodbfs_release(const char *path, struct fuse_file_info *info)
 
 	g_static_rw_lock_writer_unlock(&mount_obj->fd_table_rwlock);
 
-	if(!fde)
+	if (!fde)
 		return -ENOENT;
 
 	// XXX: Is this correct?
@@ -314,11 +293,11 @@ int mongodbfs_access(const char *path, int amode)
 	int ret = 0; 
 	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 
-	if(path == NULL || strlen(path) == 0)
+	if (path == NULL || strlen(path) == 0)
 		return -ENOENT;
 
 	/* On shutdown, fail new requests */
-	if(is_quitting(mount_obj))
+	if (is_quitting(mount_obj))
 		return -EIO;
 	
 	// XXX: Implement me
@@ -332,11 +311,11 @@ int mongodbfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 {
 	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 
-	if(path == NULL || strlen(path) == 0)
+	if (path == NULL || strlen(path) == 0)
 		return -ENOENT;
 
 	/* On shutdown, fail new requests */
-	if(is_quitting(mount_obj))
+	if (is_quitting(mount_obj))
 		return -EIO;
 
 	// XXX: Implement me
