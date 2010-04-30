@@ -21,7 +21,6 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -131,7 +130,7 @@ static void trash_fdtable_item(gpointer key, gpointer val, gpointer dontcare)
  * FUSE callouts
  */
 
-static void* mongodbfs_init(struct fuse_conn_info *conn)
+void* mongodbfs_init(struct fuse_conn_info *conn)
 {
 	struct mongodbfs_mount* mount_object = g_new0(struct mongodbfs_mount, 1);
 
@@ -150,7 +149,7 @@ static void* mongodbfs_init(struct fuse_conn_info *conn)
 	return mount_object;
 }
 
-static void mongodbfs_destroy(void *mount_object_ptr)
+void mongodbfs_destroy(void *mount_object_ptr)
 {
 	struct mongodbfs_mount* mount_object = mount_object_ptr;
 
@@ -183,13 +182,13 @@ static int is_quitting(struct mongodbfs_mount* mount_obj)
 
 /* File ops callouts */
 
-static int mongodbfs_getattr(const char *path, struct stat *stbuf)
+int mongodbfs_getattr(const char *path, struct stat *stbuf)
 {
 	// XXX: Implement me
 	return -EIO;
 }
 
-static int mongodbfs_open(const char *path, struct fuse_file_info *fi)
+int mongodbfs_open(const char *path, struct fuse_file_info *fi)
 {
 	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 	struct mongodbfs_fdentry* fde = NULL;
@@ -238,7 +237,7 @@ out:
 }
 #endif
 
-static int mongodbfs_read(const char *path, char *buf, size_t size, off_t offset,
+int mongodbfs_read(const char *path, char *buf, size_t size, off_t offset,
 		struct fuse_file_info *fi)
 {
 	int ret = 0;
@@ -258,7 +257,7 @@ static int mongodbfs_read(const char *path, char *buf, size_t size, off_t offset
 	return (ret < 0 ? -errno : ret);
 }
 
-static int mongodbfs_statfs(const char *path, struct statvfs *stat)
+int mongodbfs_statfs(const char *path, struct statvfs *stat)
 {
 	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 
@@ -270,7 +269,7 @@ static int mongodbfs_statfs(const char *path, struct statvfs *stat)
 	return -EIO;
 }
 
-static int mongodbfs_release(const char *path, struct fuse_file_info *info)
+int mongodbfs_release(const char *path, struct fuse_file_info *info)
 {
 	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
 	struct mongodbfs_fdentry* fde = NULL;
@@ -310,7 +309,7 @@ static int mongodbfs_release(const char *path, struct fuse_file_info *info)
 	return 0;
 }
 
-static int mongodbfs_access(const char *path, int amode)
+int mongodbfs_access(const char *path, int amode)
 {
 	int ret = 0; 
 	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
@@ -328,7 +327,7 @@ static int mongodbfs_access(const char *path, int amode)
 	return (ret < 0 ? errno : ret);
 }
 
-static int mongodbfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+int mongodbfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		off_t offset, struct fuse_file_info *fi)
 {
 	struct mongodbfs_mount* mount_obj = get_current_mountinfo();
@@ -346,35 +345,4 @@ static int mongodbfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler
 	stats_write_record(stats_file, "readdir", offset, 0, path);
 
 	return 0;
-}
-
-
-/*
- * Main
- */
-
-static struct fuse_operations mongodbfs_oper = {
-	.getattr	= mongodbfs_getattr,
-	/*.readlink 	= mongodbfs_readlink, */
-	.open 		= mongodbfs_open,
-	.read		= mongodbfs_read,
-	.statfs 	= mongodbfs_statfs,
-	/* TODO: do we need flush? */
-	.release 	= mongodbfs_release,
-	.init 		= mongodbfs_init,
-	.destroy 	= mongodbfs_destroy,
-	.access 	= mongodbfs_access,
-
-	/* TODO: implement these later
-	.getxattr 	= mongodbfs_getxattr,
-	.listxattr 	= mongodbfs_listxattr,
-	.opendir 	= mongodbfs_opendir, */
-	.readdir	= mongodbfs_readdir,
-	/*.releasedir 	= mongodbfs_releasedir,
-	.fsyncdir 	= mongodbfs_fsyncdir, */
-};
-
-int main(int argc, char *argv[])
-{
-	return fuse_main(argc, argv, &mongodbfs_oper, NULL);
 }

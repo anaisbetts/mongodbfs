@@ -14,6 +14,7 @@ mongodbfs_LDADD = $(MONGODBFS_LIBS) -lgthread-2.0 -lpthread \
 		 #-levent
 
 mongodbfs_SOURCES = \
+	main.cpp \
 	mongodbfs.c \
 	stats.c \
 	queue.c
