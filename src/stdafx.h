@@ -39,6 +39,4 @@
 
 #include <glib.h>
 
-#include "config.h"
-
 #endif

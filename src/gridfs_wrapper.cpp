@@ -21,17 +21,39 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-extern "C" {
 #include "stdafx.h"
 #include "gridfs_wrapper.h"
-#include "config.h"
-}
 
-mongo_conn_t mongodb_conn_create(const char* host, int port)
+#include <mongo/client/dbclient.h>
+#include <mongo/client/gridfs.h>
+#include <mongo/client/connpool.h>
+
+using namespace mongo;
+
+struct MongoConnection {
+	DBClientConnection db;
+	auto_ptr<GridFS> fs;
+};
+
+mongo_conn_t mongodb_conn_create(const char* host, int port, const char* db)
 {
-	return NULL;
+	gchar* conn_str;
+	struct MongoConnection* ret = new MongoConnection();
+	string dontcare;
+
+	conn_str = g_strdup_printf("%s:%d", host, port);
+	if (ret->db.connect( string(conn_str), dontcare)) {
+		g_free(conn_str);
+		delete ret;
+		return NULL;
+	}
+
+	ret->fs = auto_ptr<GridFS>(new GridFS(ret->db, string(db)));
+	g_free(conn_str);
+	return ret;
 }
 
 void mongodb_conn_free(mongo_conn_t conn)
 {
+	delete conn;
 }

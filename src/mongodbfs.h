@@ -37,7 +37,7 @@ struct mongodbfs_mount {
 	/* File descriptor table */
 	GHashTable* 	fd_table;
 	GHashTable* 	fd_table_byname;
-	uint 		next_fd;
+	gint 		next_fd_atomic;
 	GStaticRWLock 	fd_table_rwlock;
 
 	gint quitflag_atomic;

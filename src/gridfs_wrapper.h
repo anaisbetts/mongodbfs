@@ -24,9 +24,7 @@
 #ifndef _GRIDFS_WRAPPER_H
 #define _GRIDFS_WRAPPER_H
 
-#include "stdafx.h"
-
-typedef void* mongo_conn_t;
+typedef struct MongoConnection* mongo_conn_t;
 
 mongo_conn_t mongodb_conn_create(const char* host, int port);
 void mongodb_conn_free(mongo_conn_t conn);
